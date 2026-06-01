@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Washington State Ferries — Salish Sea Game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --glass-bg: rgba(255, 255, 255, 0.10);
+    --glass-bg-hover: rgba(255, 255, 255, 0.18);
+    --glass-border: rgba(255, 255, 255, 0.20);
+    --aqua: #7fd6ff;
+    --aqua-glow: rgba(127, 214, 255, 0.6);
+    --serif: "Instrument Serif", Georgia, serif;
+    --sans: "Instrument Sans", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  button { color: inherit; font-family: inherit; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #04131f; color: #fff;
+    font-family: var(--sans);
+    user-select: none; -webkit-user-select: none;
+    cursor: pointer;
+  }
+
+  /* Shared underwater background */
+  .ocean-bg { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%;
+    object-fit: cover; pointer-events: none; background: #04131f; }
+  .ocean-overlay { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(2,12,22,0.12) 30%, rgba(2,12,22,0.62) 100%); }
+
+  /* Screens */
+  .screen { position: fixed; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.55s ease; }
+  .screen.active { opacity: 1; pointer-events: auto; }
+
+  /* Rotated, fit-scaled stage (floor projection) */
+  .stage { transform: rotate(90deg) scale(var(--fit, 1)); transform-origin: center;
+    transition: transform 0.2s ease; }
+
+  .glass { background: var(--glass-bg); border: 1px solid var(--glass-border);
+    backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); border-radius: 19px; }
+
+  .creature-img { object-fit: contain; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.4)); }
+
+  /* ---------------- Activation ---------------- */
+  .activate-inner { display: flex; flex-direction: column; align-items: center; gap: 48px; }
+  .activate-btn { position: relative; width: 380px; height: 380px; border: none; background: transparent;
+    padding: 0; cursor: pointer; color: #fff; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
+  .activate-btn .disc { position: absolute; inset: 26px; border-radius: 50%; background: var(--glass-bg);
+    border: 1px solid var(--glass-border); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 12px 50px rgba(0,0,0,0.45), inset 0 0 40px rgba(127,214,255,0.08);
+    transition: transform 0.15s ease, box-shadow 0.3s ease; }
+  .activate-btn.holding .disc { transform: scale(0.965); box-shadow: 0 8px 30px rgba(0,0,0,0.45), inset 0 0 60px rgba(127,214,255,0.20); }
+  .activate-btn.done .disc { box-shadow: 0 0 70px var(--aqua-glow), inset 0 0 70px rgba(127,214,255,0.35); }
+  @keyframes invite { 0%,100% { box-shadow: 0 12px 50px rgba(0,0,0,0.45), inset 0 0 40px rgba(127,214,255,0.08); }
+    50% { box-shadow: 0 12px 50px rgba(0,0,0,0.45), inset 0 0 64px rgba(127,214,255,0.22); } }
+  .activate-btn:not(.holding):not(.done) .disc { animation: invite 2.6s ease-in-out infinite; }
+  .ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; }
+  .ring .track { fill: none; stroke: rgba(255,255,255,0.18); stroke-width: 10; }
+  .ring .progress { fill: none; stroke: var(--aqua); stroke-width: 10; stroke-linecap: round; filter: drop-shadow(0 0 8px var(--aqua-glow)); }
+  .activate-label { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+  .activate-label .big { font-family: var(--serif); font-size: 72px; line-height: 1; }
+  .activate-label .small { font-size: 20px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.75; }
+  .activate-hint { margin: 0; font-size: 26px; opacity: 0.85; text-align: center; max-width: 460px; text-shadow: 0 2px 14px rgba(0,0,0,0.6); }
+
+  /* ---------------- Home / mode select ---------------- */
+  .home-col { display: flex; flex-direction: column; align-items: center; gap: 40px; }
+  .home-title { margin: 0; width: 743px; text-align: center; font-family: var(--serif); font-weight: 400; font-size: 80px; line-height: 1.05; text-shadow: 0 2px 18px rgba(0,0,0,0.6); }
+  .home-cards { display: flex; flex-direction: column; gap: 32px; width: 743px; }
+  .home-card { display: flex; align-items: center; gap: 32px; width: 100%; text-align: left; padding: 40px 32px;
+    color: #fff; cursor: pointer; font-family: inherit;
+    transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease; }
+  .home-card:hover { transform: scale(1.025); background: var(--glass-bg-hover);
+    box-shadow: 0 16px 50px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.3); }
+  .home-card:active { transform: scale(0.99); }
+  .home-card .card-icon { flex: 0 0 auto; width: 190px; height: 190px; }
+  .home-card .card-content { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .home-card .card-title { font-family: var(--serif); font-size: 64px; line-height: 1; }
+  .home-card .card-desc { font-size: 28px; line-height: 36px; }
+
+  /* ---------------- Screen 2: preview ---------------- */
+  .preview-col { position: relative; display: flex; flex-direction: column; align-items: center; gap: 40px; width: 449px; }
+  .preview-title { margin: 0; width: 513px; text-align: center; font-family: var(--serif); font-size: 76px; line-height: 1.05; text-shadow: 0 2px 18px rgba(0,0,0,0.6); }
+  .preview-cards { display: flex; flex-direction: column; gap: 16px; width: 449px; }
+  .pcard { display: flex; flex-direction: column; gap: 12px; height: 345px; padding: 15px; }
+  .pcard-title { font-family: var(--serif); font-size: 39px; text-align: center; }
+  .pcard-img { flex: 1; min-height: 0; width: 100%; }
+  .preview-count { font-family: var(--serif); font-size: 44px; text-align: center; opacity: 0.92;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.5); }
+
+  /* ---------------- Screen 3: game ---------------- */
+  #screen-game { display: block; }
+  .swim-layer { position: absolute; inset: 0; overflow: hidden; cursor: crosshair; z-index: 1; }
+  .swimmer { position: absolute; top: 0; left: 0; will-change: transform; cursor: pointer; }
+  .swimmer img { display: block; width: 100%; height: auto; pointer-events: none;
+    filter: drop-shadow(0 8px 22px rgba(0,0,0,0.45)); -webkit-user-drag: none; }
+  .swimmer.wrong img { animation: wrongflash 0.45s ease; }
+  @keyframes wrongflash { 0%,100% { filter: drop-shadow(0 8px 22px rgba(0,0,0,0.45)); }
+    45% { filter: drop-shadow(0 0 16px rgba(255,90,90,0.95)) drop-shadow(0 8px 22px rgba(0,0,0,0.45)); } }
+  .swimmer.caught { transition: transform 0.42s ease, opacity 0.42s ease; opacity: 0; }
+  .catch-pop { position: absolute; z-index: 5; font-family: var(--serif); font-size: 56px; color: var(--aqua);
+    text-shadow: 0 2px 12px rgba(0,0,0,0.6); pointer-events: none; transform: translate(-50%,-50%) rotate(90deg);
+    animation: pop 0.7s ease forwards; white-space: nowrap; }
+  .catch-pop.wrong { color: #ff8080; font-size: 38px; }
+  @keyframes pop { 0% { transform: translate(-50%,-50%) rotate(90deg) scale(0.6); opacity: 0; }
+    25% { opacity: 1; } 100% { transform: translate(-50%,-160%) rotate(90deg) scale(1.1); opacity: 0; } }
+
+  /* Hold-to-confirm ring (floor projection: stand on the choice for 3s to lock it in) */
+  .hold-ring { position: fixed; z-index: 200; width: 96px; height: 96px; transform: translate(-50%,-50%); pointer-events: none; }
+  .hold-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); display: block; }
+  .hold-ring .hr-bg { fill: rgba(4,19,31,0.55); }
+  .hold-ring .hr-track { fill: none; stroke: rgba(255,255,255,0.25); stroke-width: 6; }
+  .hold-ring .hr-prog { fill: none; stroke: var(--aqua); stroke-width: 6; stroke-linecap: round; filter: drop-shadow(0 0 6px var(--aqua-glow)); }
+  .hold-ring.done { animation: hrdone 0.32s ease forwards; }
+  @keyframes hrdone { to { transform: translate(-50%,-50%) scale(1.5); opacity: 0; } }
+
+  .game-hud { position: absolute; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: flex-end;
+    padding-right: 1.2vw; pointer-events: none; }
+  .hud-col { display: flex; flex-direction: column; gap: 16px; }
+  .hud-row { display: flex; gap: 16px; }
+  .score-card { flex: 1; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 15px; text-align: center; }
+  .score-card .num { font-family: var(--serif); font-size: 90px; line-height: 1; }
+  .score-card .lbl { font-size: 24px; width: 100px; }
+  .timer-card { flex: 1; display: flex; align-items: center; justify-content: center; padding: 15px; }
+  .timer-card .t { font-family: var(--serif); font-size: 90px; line-height: 1; }
+  .timer-card.low .t { color: #ff9a6b; }
+  .target-card { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 15px; width: 150px;
+    transition: opacity 0.3s ease, filter 0.3s ease; position: relative; }
+  .target-card .tt { font-family: var(--serif); font-size: 30px; text-align: center; }
+  .target-card .ti { height: 90px; width: 100%; }
+  .target-card.found { opacity: 0.45; filter: grayscale(1); }
+  .target-card .check { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    font-size: 70px; color: var(--aqua); text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
+  .target-card.found .check { display: flex; }
+
+  /* ---------------- Screen 4: end ---------------- */
+  .end-col { display: flex; flex-direction: column; align-items: center; gap: 56px; }
+  .end-head { display: flex; flex-direction: column; align-items: center; gap: 32px; text-align: center; }
+  .end-title { font-family: var(--serif); font-size: 76px; line-height: 1.05; width: 600px; text-shadow: 0 2px 18px rgba(0,0,0,0.6); }
+  .end-sub { font-size: 40px; max-width: 620px; text-shadow: 0 2px 14px rgba(0,0,0,0.6); }
+  .photo-stack { position: relative; width: 345px; height: 250px; }
+  .framed-photo { position: absolute; inset: 0; background: url("assets/end_photo1.jpg") center/cover;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.5); }
+  .framed-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+  .framed-photo.back { transform: rotate(-11.26deg) translate(-14px, -8px); }
+  .framed-photo.front { transform: translate(10px, 16px); }
+  .qr-box { width: 340px; height: 340px; background: #fff; border-radius: 23px; padding: 18px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.5); }
+  .qr-box img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .end-btns { display: flex; gap: 24px; width: 661px; }
+  .end-btn { flex: 1; display: flex; align-items: center; justify-content: center; padding: 60px 40px;
+    font-size: 40px; color: #fff; cursor: pointer; font-family: var(--sans);
+    transition: transform 0.16s ease, background 0.16s ease; }
+  .end-btn:hover { transform: scale(1.03); background: var(--glass-bg-hover); }
+  .end-btn:active { transform: scale(0.98); }
+
+  /* ---------------- Screen 5: learn grid ---------------- */
+  .learn-col { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+  .grid { display: flex; gap: 14px; }
+  .grid-col { display: flex; flex-direction: column; gap: 14px; width: 300px; }
+  .gcard { display: flex; flex-direction: column; gap: 10px; height: 240px; padding: 14px; cursor: pointer;
+    transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease; }
+  .gcard:hover { transform: scale(1.03); background: var(--glass-bg-hover); box-shadow: 0 14px 40px rgba(0,0,0,0.4); }
+  .gcard-title { font-family: var(--serif); font-size: 30px; text-align: center; }
+  .gcard-img { flex: 1; min-height: 0; width: 100%; }
+  .edge-btn { display: inline-flex; align-items: center; justify-content: center; gap: 24px; padding: 28px 40px;
+    cursor: pointer; transition: transform 0.16s ease, background 0.16s ease; }
+  .edge-btn:hover { transform: scale(1.04); background: var(--glass-bg-hover); }
+  .edge-btn .ico { width: 44px; height: 44px; display: inline-block; }
+  .edge-btn .ico svg { width: 100%; height: 100%; display: block; }
+  .edge-btn .txt { font-size: 30px; white-space: nowrap; }
+
+  /* ---------------- Screen 6: detail ---------------- */
+  .detail-col { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+  .detail-card { display: flex; flex-direction: column; gap: 12px; width: 576px; padding: 24px; border-radius: 24px; }
+  .d-name { font-family: var(--serif); font-size: 80px; line-height: 1; }
+  .d-sci { font-family: var(--sans); font-style: italic; font-size: 22px; opacity: 0.9; }
+  .d-fact { font-size: 21px; opacity: 0.95; }
+  .d-desc { font-size: 20px; line-height: 1.4; }
+  .d-img { width: 100%; aspect-ratio: 800/470; margin: 4px 0; }
+  .d-row { display: flex; gap: 12px; align-items: flex-start; }
+  .d-label { font-weight: 700; font-size: 16px; width: 100px; flex: 0 0 100px; letter-spacing: 0.5px; }
+  .d-value { flex: 1; font-size: 20px; line-height: 1.35; }
+  .nav-row { display: flex; gap: 16px; }
+  .nav-btn { width: 110px; height: 110px; display: grid; place-items: center; cursor: pointer;
+    transition: transform 0.16s ease, background 0.16s ease; }
+  .nav-btn:hover { transform: scale(1.06); background: var(--glass-bg-hover); }
+  .nav-btn .ico { width: 46px; height: 46px; }
+  .nav-btn .ico svg { width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+  <!-- Two stacked copies of the clip; we crossfade (dissolve) between them at the loop boundary. -->
+  <video class="ocean-bg" id="bgVideoA" autoplay muted playsinline preload="auto" poster="assets/fig_background.png">
+    <source src="assets/bg_video.mp4" type="video/mp4" />
+  </video>
+  <video class="ocean-bg" id="bgVideoB" muted playsinline preload="auto" style="opacity:0">
+    <source src="assets/bg_video.mp4" type="video/mp4" />
+  </video>
+  <div class="ocean-overlay"></div>
+
+  <!-- ===== Screen: Activation ===== -->
+  <section class="screen active" id="screen-activate">
+    <div class="stage" data-stage>
+      <div class="activate-inner">
+        <button class="activate-btn" id="activateBtn" aria-label="Press and hold to begin">
+          <svg class="ring" viewBox="0 0 380 380" aria-hidden="true">
+            <circle class="track" cx="190" cy="190" r="172"></circle>
+            <circle class="progress" id="ringProgress" cx="190" cy="190" r="172"></circle>
+          </svg>
+          <span class="disc"></span>
+          <span class="activate-label"><span class="big">Begin</span><span class="small">press &amp; hold</span></span>
+        </button>
+        <p class="activate-hint">Step onto the circle and hold to begin</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Screen 1: Home / mode select ===== -->
+  <section class="screen" id="screen-home">
+    <div class="stage" data-stage>
+      <div class="home-col">
+        <h1 class="home-title">Welcome to<br />Washington State Ferries!</h1>
+        <div class="home-cards">
+          <button class="home-card glass" id="btnPlay">
+            <img class="card-icon creature-img" src="assets/orca_sticker.png" alt="" />
+            <div class="card-content">
+              <div class="card-title">Play</div>
+              <div class="card-desc">Work together to find rare marine creatures from the Pacific Northwest. Can you catch them all?</div>
+            </div>
+          </button>
+          <button class="home-card glass" id="btnLearn">
+            <img class="card-icon creature-img" src="assets/fig_learn_image7.png" alt="" />
+            <div class="card-content">
+              <div class="card-title">Learn</div>
+              <div class="card-desc">Step into an interactive underwater world filled with fun facts, creatures, and ocean discoveries.</div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Screen 2: Pre-game preview ===== -->
+  <section class="screen" id="screen-preview">
+    <div class="stage" data-stage>
+      <div class="preview-col">
+        <h2 class="preview-title">Can you spot these sea creatures?</h2>
+        <div class="preview-cards" id="previewCards"></div>
+        <div class="preview-count" id="previewCount">Starting in 5</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Screen 3: Main game ===== -->
+  <section class="screen" id="screen-game">
+    <div class="swim-layer" id="swimLayer"></div>
+    <div class="game-hud">
+      <div class="stage" data-stage>
+        <div class="hud-col">
+          <div class="hud-row">
+            <div class="score-card glass"><span class="num" id="scoreNum">0</span><span class="lbl">Fish found</span></div>
+            <div class="timer-card glass" id="timerCard"><span class="t" id="timerVal">02:00</span></div>
+          </div>
+          <div class="hud-row" id="targetRow"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Screen 4: Game end / reward ===== -->
+  <section class="screen" id="screen-end">
+    <div class="stage" data-stage>
+      <div class="end-col">
+        <div class="end-head">
+          <div class="end-title" id="endTitle">You catch 0 creatures!</div>
+          <div class="end-sub">Scan to unlock a frame for the Photo Booth</div>
+        </div>
+        <div class="photo-stack">
+          <div class="framed-photo back"><img src="assets/end_photo2.png" alt="" /></div>
+          <div class="framed-photo front"><img src="assets/end_photo2.png" alt="" /></div>
+        </div>
+        <div class="qr-box"><img src="assets/end_qr.jpg" alt="QR code" /></div>
+        <div class="end-btns">
+          <button class="end-btn glass" id="btnPlayAgain">Play again</button>
+          <button class="end-btn glass" id="btnHome">Home</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Screen 5: Learn grid ===== -->
+  <section class="screen" id="screen-learn">
+    <div class="stage" data-stage>
+      <div class="learn-col">
+        <div class="grid" id="learnGrid"></div>
+        <button class="edge-btn glass" id="btnBackHome">
+          <span class="ico" id="houseIco"></span><span class="txt">Back to Home</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Screen 6: Creature detail ===== -->
+  <section class="screen" id="screen-detail">
+    <div class="stage" data-stage>
+      <div class="detail-col">
+        <div class="detail-card glass" id="detailCard"></div>
+        <div class="nav-row">
+          <button class="nav-btn glass" id="navPrev"><span class="ico" id="caretUpIco"></span></button>
+          <button class="nav-btn glass" id="navGrid"><span class="ico" id="houseIco2"></span></button>
+          <button class="nav-btn glass" id="navNext"><span class="ico" id="caretDownIco"></span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<script>
+/* =========================================================================
+   Creature database (exact order matters for Learn grid + detail nav)
+   ========================================================================= */
+const CREATURES = [
+  { key: "orca", name: "Orca", img: "assets/c_orca.png", sci: "Orcinus orca",
+    fact: "Also called killer whales, orcas are the ocean's top predator — and the largest member of the dolphin family.",
+    desc: "Orcas are highly social, intelligent hunters that live in tight family pods with their own dialects of calls. The Southern Resident orcas of the Salish Sea feed almost entirely on Chinook salmon.",
+    weight: "Up to 12,000 lbs (6 tons)", length: "23 to 32 feet", lifespan: "30 to 50+ years (females up to 80)",
+    threats: "Prey (salmon) depletion, chemical contaminants, vessel noise and disturbance, oil spills",
+    region: "All oceans; Southern Residents in the Salish Sea & Puget Sound" },
+  { key: "sea_otter", name: "Sea Otter", img: "assets/c_sea_otter.png", sci: "Enhydra lutris",
+    fact: "Sea otters float on their backs and use rocks as tools to crack open shellfish — and hold hands while sleeping so they don't drift apart.",
+    desc: "The smallest marine mammal, the sea otter has the densest fur of any animal. It keeps warm without blubber by eating up to a quarter of its body weight each day.",
+    weight: "35 to 90 lbs", length: "About 4 feet", lifespan: "10 to 20 years",
+    threats: "Oil spills, entanglement in fishing gear, predation by orcas and sharks, disease",
+    region: "North Pacific rim — Alaska, British Columbia, Washington, California" },
+  { key: "pink_salmon", name: "Pink Salmon", img: "assets/c_pink_salmon.png", sci: "Oncorhynchus gorbuscha",
+    fact: "Pink salmon are the smallest and most abundant Pacific salmon, returning to spawn on a strict two-year cycle.",
+    desc: "Spawning males develop a pronounced humped back, earning them the nickname 'humpies.' They are a cornerstone of the food web for orcas, bears, eagles, and people.",
+    weight: "3 to 5 lbs", length: "20 to 25 inches", lifespan: "About 2 years",
+    threats: "Habitat loss, dams, warming rivers and oceans, overfishing",
+    region: "North Pacific; rivers from California to Alaska and across to Russia" },
+  { key: "sunflower_star", name: "Sun Flower Sea Star", img: "assets/c_sunflower_star.png", sci: "Pycnopodia helianthoides",
+    fact: "One of the largest sea stars on Earth, the sunflower star can have up to 24 arms and move surprisingly fast.",
+    desc: "A voracious predator of urchins, this giant sea star helps keep kelp forests healthy. Populations crashed after a sea star wasting disease outbreak beginning in 2013.",
+    weight: "Up to 11 lbs", length: "Arm span up to 3 feet", lifespan: "Estimated 3 to 5+ years",
+    threats: "Sea star wasting disease, marine heatwaves, warming ocean temperatures",
+    region: "Northeast Pacific, from Alaska to Baja California" },
+  { key: "moon_jelly", name: "Moon Jelly", img: "assets/c_moon_jelly.png", sci: "Aurelia aurita",
+    fact: "You can recognize a moon jelly by the four horseshoe-shaped gonads visible through its translucent bell.",
+    desc: "A gentle drifter with only a mild sting, the moon jelly feeds on plankton it captures in mucus along its bell. Large blooms often gather in calm bays and harbors.",
+    weight: "Very light, mostly water", length: "Bell up to 15 inches across", lifespan: "Typically under 1 year",
+    threats: "Pollution, plastic debris, ocean warming (which can also fuel jelly blooms)",
+    region: "Coastal waters worldwide, including Puget Sound" },
+  { key: "harbor_seal", name: "Harbor Seal", img: "assets/c_harbor_seal.png", sci: "Phoca vitulina",
+    fact: "Harbor seals can sleep underwater, surfacing to breathe without fully waking.",
+    desc: "One of the most common marine mammals along U.S. coasts, harbor seals haul out on rocks and beaches in a 'banana-like' pose. Each seal has a unique spotted coat.",
+    weight: "180 to 285 lbs (adult)", length: "5 to 6 feet", lifespan: "25 to 30 years",
+    threats: "Entanglement, contaminants, habitat loss, human disturbance, disease",
+    region: "Temperate North Pacific and North Atlantic coasts, incl. Washington" },
+  { key: "wolf_eel", name: "Wolf Eel", img: "assets/c_wolf_eel.png", sci: "Anarrhichthys ocellatus",
+    fact: "Despite the name, the wolf eel isn't an eel at all — it's a long-bodied fish that often mates for life.",
+    desc: "With powerful jaws for crushing urchins, crabs, and clams, the wolf eel lives in rocky dens. Curious and gentle with divers, mated pairs share the same den for years.",
+    weight: "Up to 40 lbs", length: "Up to 8 feet", lifespan: "Up to about 25 years",
+    threats: "Habitat disturbance, fishing bycatch, ocean warming",
+    region: "North Pacific rocky reefs — California to Alaska and Japan" },
+  { key: "blue_whale", name: "Blue Whale", img: "assets/c_blue_whale.png", sci: "Balaenoptera musculus",
+    fact: "The blue whale is the largest animal known to have ever lived — its heart alone is the size of a small car.",
+    desc: "Feeding almost entirely on tiny krill, a blue whale can eat several tons a day. Their low-frequency calls are among the loudest sounds made by any animal.",
+    weight: "Up to 330,000 lbs (up to 165 tons)", length: "80 to 100 feet", lifespan: "80 to 90 years",
+    threats: "Vessel strikes, entanglement, ocean noise, climate change affecting krill",
+    region: "All oceans worldwide" },
+];
+const byKey = (k) => CREATURES.find((c) => c.key === k);
+
+/* SVG icons (from Figma) */
+const ICON_HOUSE = '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M41.12 20.38 26.12 5.38a3 3 0 0 0-4.24 0l-15 15A3 3 0 0 0 6 22.5V40a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V30h8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V22.5a3 3 0 0 0-.88-2.12Z" fill="#fff"/></svg>';
+/* Left/right chevrons: under the stage's 90deg CW rotation they read as up/down */
+const ICON_CARET_PREV = '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M31 11 L17 24 L31 37" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_CARET_NEXT = '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 11 L31 24 L17 37" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/* =========================================================================
+   Fit-to-viewport scaling (content rotated 90deg)
+   ========================================================================= */
+// The Figma screens are a fixed 1920x1080 artboard with content sized at native px.
+// Scale that whole canvas UNIFORMLY to the viewport so the layout keeps the exact
+// proportions of the design on any screen (like a slide), instead of stretching to fill.
+const REF_W = 1920, REF_H = 1080;
+function fitStages() {
+  const refScale = Math.min(window.innerWidth / REF_W, window.innerHeight / REF_H);
+  document.querySelectorAll("[data-stage]").forEach((stage) => {
+    const inner = stage.firstElementChild;
+    const w = inner.offsetWidth, h = inner.offsetHeight;
+    if (!w || !h) return;
+    // content is rotated 90deg, so footprint width = inner height, footprint height = inner width.
+    // refScale reproduces the Figma; the second term is a safety clamp so nothing ever overflows.
+    const fitScale = Math.min((window.innerWidth * 0.98) / h, (window.innerHeight * 0.98) / w);
+    const fit = Math.min(refScale, fitScale);
+    stage.style.setProperty("--fit", fit.toFixed(4));
+  });
+}
+window.addEventListener("resize", () => { fitStages(); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitStages);
+
+/* =========================================================================
+   Screen router
+   ========================================================================= */
+const onEnter = {}, onExit = {};
+function go(name) {
+  const prev = document.querySelector(".screen.active");
+  if (prev && onExit[prev.id]) onExit[prev.id]();
+  document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === "screen-" + name));
+  fitStages();
+  if (onEnter["screen-" + name]) onEnter["screen-" + name]();
+}
+
+/* =========================================================================
+   Activation: press & hold
+   ========================================================================= */
+const HOLD_MS = 1500, REWIND_MS = 600;
+const actBtn = document.getElementById("activateBtn");
+const ring = document.getElementById("ringProgress");
+const RC = 2 * Math.PI * 172;
+ring.style.strokeDasharray = RC; ring.style.strokeDashoffset = RC;
+let aProg = 0, aHold = false, aDone = false, aRaf = null, aLast = 0;
+function aRender() { ring.style.strokeDashoffset = RC * (1 - aProg); }
+function aLoop(t) {
+  if (!aLast) aLast = t;
+  const dt = t - aLast; aLast = t;
+  aProg += aHold ? dt / HOLD_MS : -dt / REWIND_MS;
+  if (aProg >= 1) { aProg = 1; aRender(); aComplete(); return; }
+  if (aProg <= 0 && !aHold) { aProg = 0; aRender(); aRaf = null; aLast = 0; return; }
+  aRender(); aRaf = requestAnimationFrame(aLoop);
+}
+function aEnsure() { if (aRaf == null) { aLast = 0; aRaf = requestAnimationFrame(aLoop); } }
+function aStart(e) { if (e) e.preventDefault(); if (aDone) return; aHold = true; actBtn.classList.add("holding"); aEnsure(); }
+function aEnd() { if (aDone) return; aHold = false; actBtn.classList.remove("holding"); aEnsure(); }
+function aComplete() { aDone = true; aHold = false; actBtn.classList.remove("holding"); actBtn.classList.add("done"); setTimeout(() => go("home"), 550); }
+actBtn.addEventListener("pointerdown", aStart);
+actBtn.addEventListener("pointerup", aEnd);
+actBtn.addEventListener("pointerleave", aEnd);
+actBtn.addEventListener("pointercancel", aEnd);
+actBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+window.addEventListener("keydown", (e) => {
+  if (aDone || e.repeat) return;
+  if (!document.getElementById("screen-activate").classList.contains("active")) return;
+  if (e.key === " " || e.key === "Enter") aStart(e);
+});
+window.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") aEnd(); });
+
+/* =========================================================================
+   Shared round state
+   ========================================================================= */
+const state = { targets: [], found: new Set(), score: 0, remaining: 120, detailIndex: 0 };
+function resetRound() {
+  const pool = [...CREATURES];
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  state.targets = pool.slice(0, 3);
+  state.found = new Set();
+  state.score = 0;
+  state.remaining = 120;
+}
+
+/* Home buttons */
+holdConfirm(document.getElementById("btnPlay"), () => { resetRound(); go("preview"); });
+holdConfirm(document.getElementById("btnLearn"), () => go("learn"));
+
+/* =========================================================================
+   Screen 2: preview (5s countdown -> game)
+   ========================================================================= */
+let previewTimer = null, previewTick = null;
+onEnter["screen-preview"] = function () {
+  const wrap = document.getElementById("previewCards");
+  wrap.innerHTML = "";
+  state.targets.forEach((c) => {
+    const card = document.createElement("div");
+    card.className = "pcard glass";
+    card.innerHTML = '<div class="pcard-title">' + c.name + '</div>';
+    const img = document.createElement("img");
+    img.className = "pcard-img creature-img"; img.src = c.img; img.alt = "";
+    card.appendChild(img);
+    wrap.appendChild(card);
+  });
+  // 5s countdown below the cards, then dive into the game.
+  let n = 5;
+  const countEl = document.getElementById("previewCount");
+  countEl.textContent = "Starting in " + n;
+  fitStages();
+  clearInterval(previewTick);
+  previewTick = setInterval(() => { n--; countEl.textContent = n > 0 ? "Starting in " + n : "Diving in!"; }, 1000);
+  previewTimer = setTimeout(() => go("game"), 5000);
+};
+onExit["screen-preview"] = function () { clearTimeout(previewTimer); clearInterval(previewTick); };
+
+/* =========================================================================
+   Screen 3: main game
+   ========================================================================= */
+const swimLayer = document.getElementById("swimLayer");
+const scoreNum = document.getElementById("scoreNum");
+const timerVal = document.getElementById("timerVal");
+const timerCard = document.getElementById("timerCard");
+const targetRow = document.getElementById("targetRow");
+let swimmers = [], gameRaf = null, gameActive = false, gameLast = 0;
+let lastBig = {};   // last spawn time (s) for orca/blue_whale, to guarantee they appear regularly
+const POP = 10;
+const rnd = (a, b) => a + Math.random() * (b - a);
+// Creature size = fraction of viewport HEIGHT, taken straight from the Figma game scene
+// (node 40010387:82155, a 1920x1080 artboard) so the Blue Whale fills the screen.
+const SIZE = { blue_whale: 1.15, orca: 0.64, harbor_seal: 0.34, sea_otter: 0.31,
+  sunflower_star: 0.21, moon_jelly: 0.19, wolf_eel: 0.18, pink_salmon: 0.10 };
+// Rotation that makes each sprite point HEAD-UP (its default, = swim from bottom to top).
+// Swapping to head-down (top to bottom) is done with a VERTICAL flip, never a horizontal one.
+const UP_ROT = { orca: 90, sea_otter: 90, pink_salmon: 90, blue_whale: 90, harbor_seal: 90, wolf_eel: -90 };
+const UPRIGHT = new Set(["moon_jelly", "sunflower_star"]); // no head -> no directional flip
+const FIXED_ROT = { moon_jelly: 90 };                       // jelly sits rotated 90° (to the right)
+const SWIM_IMG = { orca: "assets/c_orca_game.png" };       // in-game orca uses its own illustration
+// Spawn rarity: salmon common (+ schools), orca rare, blue whale rarest.
+const WEIGHT = { pink_salmon: 5, harbor_seal: 3.2, sea_otter: 3.2, moon_jelly: 3,
+  sunflower_star: 3, wolf_eel: 2.2, orca: 1.4, blue_whale: 0.7 };
+function pickSpecies() {
+  let total = 0; for (const c of CREATURES) total += WEIGHT[c.key] ?? 1;
+  let r = Math.random() * total;
+  for (const c of CREATURES) { r -= (WEIGHT[c.key] ?? 1); if (r <= 0) return c.key; }
+  return CREATURES[0].key;
+}
+
+function buildTargetHud() {
+  targetRow.innerHTML = "";
+  state.targets.forEach((c) => {
+    const card = document.createElement("div");
+    card.className = "target-card glass"; card.dataset.key = c.key;
+    card.innerHTML = '<div class="tt">' + c.name + '</div>';
+    const img = document.createElement("img");
+    img.className = "ti creature-img"; img.src = c.img; img.alt = "";
+    card.appendChild(img);
+    const chk = document.createElement("div"); chk.className = "check"; chk.textContent = "✓";
+    card.appendChild(chk);
+    targetRow.appendChild(card);
+  });
+}
+
+function makeSwimmer(forceKey, opts) {
+  opts = opts || {};
+  const iw = window.innerWidth, ih = window.innerHeight;
+  const cr = byKey(forceKey || pickSpecies());
+  const isTarget = state.targets.some((t) => t.key === cr.key);
+  const size = (SIZE[cr.key] || 0.3) * ih;            // design-scaled: fraction of viewport height
+  const dir = opts.dir != null ? opts.dir : (Math.random() < 0.5 ? 1 : -1); // +1 down, -1 up
+  const upright = UPRIGHT.has(cr.key);               // jelly / sea star -> no directional flip
+  const baseRot = upright ? (FIXED_ROT[cr.key] ?? 0) : (UP_ROT[cr.key] ?? 90); // head-up, or fixed for jelly
+  const el = document.createElement("div");
+  el.className = "swimmer" + (isTarget ? " is-target" : "");
+  el.style.width = size + "px";
+  el.innerHTML = '<img src="' + (SWIM_IMG[cr.key] || cr.img) + '" alt="">';
+  const obj = {
+    el, cr, isTarget, size, dir, upright, baseRot,
+    yc: opts.yc != null ? opts.yc : (opts.onScreen ? rnd(0.05, 0.95) * ih : (dir > 0 ? -size : ih + size)),
+    speed: opts.speed != null ? opts.speed : rnd(11, 18) * ih / 100,  // vertical travel px/s (faster)
+    baseX: opts.baseX != null ? opts.baseX : rnd(0.08, 0.92) * iw,   // horizontal center
+    amp: rnd(0.6, 2.0) * iw / 100,                    // gentle horizontal sway (less dramatic curve)
+    freq: rnd(0.25, 0.6), phase: rnd(0, Math.PI * 2),
+    tilt: rnd(-5, 5), caught: false,
+  };
+  el.addEventListener("pointerdown", (e) => { e.preventDefault(); catchSwimmer(obj, e.clientX, e.clientY); });
+  swimLayer.appendChild(el);
+  swimmers.push(obj);
+  if (cr.key === "orca" || cr.key === "blue_whale") lastBig[cr.key] = performance.now() / 1000;
+  return obj;
+}
+// A school of 5-6 salmon moving together (clustered x, shared direction/speed).
+function spawnSchool(onScreen) {
+  const iw = window.innerWidth, ih = window.innerHeight;
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  const cx = rnd(0.18, 0.82) * iw;
+  const baseSpeed = rnd(13, 19) * ih / 100;
+  const edge = dir > 0 ? -0.06 * ih : 1.06 * ih;
+  const n = 5 + (Math.random() < 0.5 ? 0 : 1);
+  for (let i = 0; i < n; i++) {
+    makeSwimmer("pink_salmon", {
+      onScreen, dir,
+      baseX: cx + rnd(-0.07, 0.07) * iw,
+      speed: baseSpeed * rnd(0.95, 1.08),
+      yc: onScreen ? rnd(0.12, 0.88) * ih : edge - dir * i * 0.085 * ih,
+    });
+  }
+}
+// Keep the population near POP, spawning by rarity (salmon arrive as schools).
+function topUp(onScreen) {
+  let guard = 0;
+  while (swimmers.length < POP && guard++ < 24) {
+    const key = pickSpecies();
+    if (key === "pink_salmon") spawnSchool(onScreen);
+    else makeSwimmer(key, { onScreen });
+  }
+}
+
+function showPop(cx, cy, text, kind) {
+  const pop = document.createElement("div");
+  pop.className = "catch-pop" + (kind ? " " + kind : "");
+  pop.textContent = text;
+  pop.style.left = cx + "px"; pop.style.top = cy + "px";
+  swimLayer.appendChild(pop);
+  setTimeout(() => pop.remove(), 800);
+}
+function catchSwimmer(obj, cx, cy) {
+  if (obj.caught || !gameActive) return;
+  if (!obj.isTarget) {
+    // Not one of the 3 target creatures: no points, just feedback. The fish swims on.
+    const now = performance.now();
+    if (!obj._wrongAt || now - obj._wrongAt > 500) {
+      obj._wrongAt = now;
+      showPop(cx, cy, "wrong fish :(", "wrong");
+      obj.el.classList.remove("wrong"); void obj.el.offsetWidth; obj.el.classList.add("wrong");
+      playBuzz();
+    }
+    return;
+  }
+  obj.caught = true;
+  state.score++;
+  scoreNum.textContent = state.score;
+  if (!state.found.has(obj.cr.key)) {
+    state.found.add(obj.cr.key);
+    const card = targetRow.querySelector('[data-key="' + obj.cr.key + '"]');
+    if (card) card.classList.add("found");
+  }
+  showPop(cx, cy, "+1", "");
+  playDing();
+  obj.el.classList.add("caught");
+  obj.el.style.pointerEvents = "none";
+  setTimeout(() => {
+    obj.el.remove();
+    swimmers = swimmers.filter((s) => s !== obj);
+    if (gameActive) topUp(false);
+  }, 430);
+}
+
+function startGame() {
+  swimLayer.innerHTML = "";
+  swimmers = [];
+  lastBig = { orca: performance.now() / 1000, blue_whale: performance.now() / 1000 };
+  scoreNum.textContent = "0";
+  timerVal.textContent = "02:00";
+  timerCard.classList.remove("low");
+  buildTargetHud();
+  // seed each target on-screen so players see what to find, then fill by rarity (schools of salmon)
+  state.targets.forEach((t) => makeSwimmer(t.key, { onScreen: true }));
+  topUp(true);
+  gameActive = true; gameLast = 0;
+  gameRaf = requestAnimationFrame(gameLoop);
+}
+function stopGame() {
+  gameActive = false;
+  if (gameRaf) cancelAnimationFrame(gameRaf);
+  gameRaf = null;
+  swimLayer.innerHTML = ""; swimmers = [];
+}
+function gameLoop(t) {
+  if (!gameActive) return;
+  if (!gameLast) gameLast = t;
+  const dt = Math.min(0.05, (t - gameLast) / 1000); gameLast = t;
+  const ih = window.innerHeight, now = t / 1000;
+  let exited = false;
+  swimmers.forEach((s) => {
+    if (s.caught) return;
+    s.yc += s.dir * s.speed * dt;
+    if ((s.dir > 0 && s.yc > ih + s.size) || (s.dir < 0 && s.yc < -s.size)) { s._remove = true; exited = true; return; }
+    const x = s.baseX + s.amp * Math.sin(now * s.freq * Math.PI + s.phase);
+    const flipY = s.upright ? 1 : (s.dir > 0 ? -1 : 1);   // vertical flip so the head leads downward
+    s.el.style.transform = "translate(" + x.toFixed(1) + "px," + s.yc.toFixed(1) + "px) translate(-50%,-50%) scaleY(" + flipY + ") rotate(" + (s.baseRot + s.tilt) + "deg)";
+  });
+  if (exited) { swimmers = swimmers.filter((s) => { if (s._remove) { s.el.remove(); return false; } return true; }); topUp(false); }
+  // Guarantee the orca and blue whale appear at least every 15s (when none is on screen).
+  ["orca", "blue_whale"].forEach((k) => {
+    if (now - (lastBig[k] || 0) >= 15 && !swimmers.some((s) => s.cr.key === k && !s.caught)) makeSwimmer(k);
+  });
+  // timer
+  state.remaining -= dt;
+  if (state.remaining <= 0) { state.remaining = 0; renderTimer(); go("end"); return; }
+  renderTimer();
+  gameRaf = requestAnimationFrame(gameLoop);
+}
+function renderTimer() {
+  const r = Math.max(0, Math.ceil(state.remaining));
+  const mm = String(Math.floor(r / 60)).padStart(2, "0");
+  const ss = String(r % 60).padStart(2, "0");
+  timerVal.textContent = mm + ":" + ss;
+  timerCard.classList.toggle("low", r <= 15);
+}
+onEnter["screen-game"] = startGame;
+onExit["screen-game"] = stopGame;
+
+/* =========================================================================
+   Screen 4: end / reward
+   ========================================================================= */
+onEnter["screen-end"] = function () {
+  document.getElementById("endTitle").textContent = "You catch " + state.score + (state.score === 1 ? " creature!" : " creatures!");
+  fitStages();
+};
+holdConfirm(document.getElementById("btnPlayAgain"), () => { resetRound(); go("preview"); });
+holdConfirm(document.getElementById("btnHome"), () => go("home"));
+
+/* =========================================================================
+   Screen 5: learn grid
+   ========================================================================= */
+function buildLearnGrid() {
+  const grid = document.getElementById("learnGrid");
+  grid.innerHTML = "";
+  const cols = [CREATURES.slice(0, 4), CREATURES.slice(4, 8)];
+  cols.forEach((col) => {
+    const colEl = document.createElement("div"); colEl.className = "grid-col";
+    col.forEach((c) => {
+      const card = document.createElement("button"); card.className = "gcard glass"; card.dataset.key = c.key;
+      card.innerHTML = '<div class="gcard-title">' + c.name + '</div>';
+      const img = document.createElement("img"); img.className = "gcard-img creature-img"; img.src = c.img; img.alt = "";
+      card.appendChild(img);
+      holdConfirm(card, () => { state.detailIndex = CREATURES.findIndex((x) => x.key === c.key); go("detail"); });
+      colEl.appendChild(card);
+    });
+    grid.appendChild(colEl);
+  });
+}
+holdConfirm(document.getElementById("btnBackHome"), () => go("home"));
+document.getElementById("houseIco").innerHTML = ICON_HOUSE;
+
+/* =========================================================================
+   Screen 6: creature detail
+   ========================================================================= */
+function fillDetail() {
+  const c = CREATURES[state.detailIndex];
+  const rows = [["WEIGHT", c.weight], ["LENGTH", c.length], ["LIFESPAN", c.lifespan], ["THREATS", c.threats], ["REGION", c.region]];
+  let html = '<div><div class="d-name">' + c.name + '</div><div class="d-sci">' + c.sci + '</div></div>';
+  html += '<div class="d-fact">' + c.fact + '</div>';
+  html += '<div class="d-desc">' + c.desc + '</div>';
+  html += '<img class="d-img creature-img" src="' + c.img + '" alt="">';
+  rows.forEach(([k, v]) => { html += '<div class="d-row"><div class="d-label">' + k + '</div><div class="d-value">' + v + '</div></div>'; });
+  document.getElementById("detailCard").innerHTML = html;
+}
+let detailAnim = null;
+function showDetail(dir) {
+  const card = document.getElementById("detailCard");
+  if (!dir) { fillDetail(); fitStages(); return; }
+  if (detailAnim) detailAnim.cancel();
+  // translateX is in the card's local space; the stage's 90deg rotation turns it into a
+  // vertical swipe that matches the up/down nav buttons.
+  const out = dir > 0 ? -64 : 64;
+  const inn = -out;
+  detailAnim = card.animate(
+    [{ transform: "translateX(0)", opacity: 1 }, { transform: "translateX(" + out + "px)", opacity: 0 }],
+    { duration: 150, easing: "ease-in" });
+  detailAnim.onfinish = () => {
+    fillDetail(); fitStages();
+    detailAnim = card.animate(
+      [{ transform: "translateX(" + inn + "px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 }],
+      { duration: 260, easing: "cubic-bezier(0.22,1,0.36,1)" });
+  };
+}
+document.getElementById("caretUpIco").innerHTML = ICON_CARET_PREV;
+document.getElementById("caretDownIco").innerHTML = ICON_CARET_NEXT;
+document.getElementById("houseIco2").innerHTML = ICON_HOUSE;
+holdConfirm(document.getElementById("navPrev"), () => { state.detailIndex = (state.detailIndex - 1 + CREATURES.length) % CREATURES.length; showDetail(-1); });
+holdConfirm(document.getElementById("navNext"), () => { state.detailIndex = (state.detailIndex + 1) % CREATURES.length; showDetail(1); });
+holdConfirm(document.getElementById("navGrid"), () => go("learn"));
+onEnter["screen-detail"] = () => showDetail(0);
+
+/* Background video: nudge playback (muted autoplay can be deferred until a gesture). */
+const vA = document.getElementById("bgVideoA");
+const vB = document.getElementById("bgVideoB");
+const XF = 1.5;                  // crossfade duration (seconds)
+let bgActive = vA, bgCrossing = false;
+function playBg() { const p = bgActive.play(); if (p) p.catch(() => {}); }
+
+/* WebAudio cues: a bright ding for a correct catch, a low buzz for a wrong one. */
+let audioCtx = null;
+function ensureAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch (e) {}
+}
+function blip(freq, t0, dur, type, peak) {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq; o.connect(g); g.connect(audioCtx.destination);
+  const t = audioCtx.currentTime + t0;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur + 0.03);
+}
+function playDing() { ensureAudio(); blip(880, 0, 0.13, "sine", 0.30); blip(1320, 0.085, 0.20, "sine", 0.26); }
+function playBuzz() { ensureAudio(); blip(160, 0, 0.22, "square", 0.18); blip(120, 0.07, 0.24, "square", 0.16); }
+function playConfirm() { ensureAudio(); blip(720, 0, 0.09, "sine", 0.22); blip(1080, 0.075, 0.15, "sine", 0.2); }
+
+/* Hold-to-confirm: on the floor you must stand on a choice for 3s to lock it in.
+   A progress ring appears at the click point and fills; releasing early cancels. */
+const HOLD_CONFIRM_MS = 1500;
+let hcActive = null;
+function holdConfirm(el, action) {
+  el.addEventListener("pointerdown", (e) => { e.preventDefault(); hcStart(e.clientX, e.clientY, action); });
+  el.addEventListener("pointerup", hcCancel);
+  el.addEventListener("pointerleave", hcCancel);
+  el.addEventListener("pointercancel", hcCancel);
+}
+function hcStart(x, y, action) {
+  hcCancel();
+  ensureAudio();
+  const ring = document.createElement("div");
+  ring.className = "hold-ring";
+  ring.style.left = x + "px"; ring.style.top = y + "px";
+  ring.innerHTML = '<svg viewBox="0 0 96 96"><circle class="hr-bg" cx="48" cy="48" r="45"></circle><circle class="hr-track" cx="48" cy="48" r="42"></circle><circle class="hr-prog" cx="48" cy="48" r="42"></circle></svg>';
+  document.body.appendChild(ring);
+  const C = 2 * Math.PI * 42;
+  const prog = ring.querySelector(".hr-prog");
+  prog.style.strokeDasharray = C; prog.style.strokeDashoffset = C;
+  hcActive = { ring, prog, C, action, progress: 0, last: 0, raf: requestAnimationFrame(hcLoop), done: false };
+}
+function hcLoop(t) {
+  if (!hcActive) return;
+  if (!hcActive.last) hcActive.last = t;
+  const dt = t - hcActive.last; hcActive.last = t;
+  hcActive.progress += dt / HOLD_CONFIRM_MS;
+  if (hcActive.progress >= 1) { hcActive.progress = 1; hcRender(); hcComplete(); return; }
+  hcRender();
+  hcActive.raf = requestAnimationFrame(hcLoop);
+}
+function hcRender() { if (hcActive) hcActive.prog.style.strokeDashoffset = hcActive.C * (1 - hcActive.progress); }
+function hcCancel() {
+  if (!hcActive || hcActive.done) return;
+  if (hcActive.raf) cancelAnimationFrame(hcActive.raf);
+  hcActive.ring.remove();
+  hcActive = null;
+}
+function hcComplete() {
+  const a = hcActive; a.done = true;
+  a.ring.classList.add("done");
+  playConfirm();
+  setTimeout(() => a.ring.remove(), 340);
+  hcActive = null;
+  a.action();
+}
+
+/* Autoplay + audio both need a user gesture; kick them off on first interaction. */
+function startMedia() { playBg(); ensureAudio(); }
+function goFullscreen() {
+  const el = document.documentElement;
+  if (!document.fullscreenElement && el.requestFullscreen) { const p = el.requestFullscreen(); if (p) p.catch(() => {}); }
+  else if (!document.webkitFullscreenElement && el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); }
+}
+function toggleFullscreen() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  } else {
+    goFullscreen();
+  }
+}
+// Press F anywhere to toggle fullscreen (Esc also exits).
+window.addEventListener("keydown", (e) => { if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFullscreen(); } });
+startMedia();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) playBg(); }); // resume after tab switch / display sleep
+// First tap enters fullscreen for the floor projection (and starts video + audio, which need a gesture).
+document.addEventListener("pointerdown", () => { startMedia(); goFullscreen(); }, { once: true });
+
+/* True crossfade (dissolve) at the loop boundary: as the active clip ends, the other
+   copy restarts from 0 and we dissolve between them. vA is the base (always opacity 1);
+   vB sits on top and its opacity carries the blend — so the two layers always sum to
+   full coverage and the brightness never dips to black. */
+function bgLoopTick() {
+  const a = bgActive, b = (a === vA) ? vB : vA;
+  if (a.duration && !a.paused) {
+    const remain = a.duration - a.currentTime;
+    if (!bgCrossing && remain <= XF) {        // begin the dissolve
+      bgCrossing = true;
+      b.currentTime = 0;
+      const p = b.play(); if (p) p.catch(() => {});
+    }
+    if (bgCrossing) {
+      let e = 1 - remain / XF;                 // 0 -> 1 as the active clip finishes
+      e = Math.max(0, Math.min(1, e)); e = e * e * (3 - 2 * e); // smoothstep
+      vA.style.opacity = "1";                  // base layer always fully on
+      vB.style.opacity = (a === vA ? e : 1 - e).toFixed(3); // top layer carries the blend
+      if (remain <= 0.05 || a.ended) {         // finish: swap roles
+        vA.style.opacity = "1";
+        vB.style.opacity = (a === vA) ? "1" : "0";
+        a.pause(); a.currentTime = 0;
+        bgActive = b;
+        bgCrossing = false;
+      }
+    }
+  }
+  requestAnimationFrame(bgLoopTick);
+}
+requestAnimationFrame(bgLoopTick);
+
+/* init */
+buildLearnGrid();
+fitStages();
+</script>
+</body>
+</html>
